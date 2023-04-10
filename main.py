@@ -168,6 +168,39 @@ def compensated_humidity(hum, comp_hum):
         var_h = 0.0
     return var_h
 
+def weather_setup():
+    """
+    send the setup for the recommended weather station setting
+    sensor mode forced mode
+    overssampling pressure x1 temp x1 humidity x 1
+    Memory map snippet from table 18: page 27
+    CTRL_Meas | bit 7 |bit 6| bit 5| bit 4| bit 3 | bit 2 | bit 1 | bit 0  |
+    __________|     osrs_t[2:0]    |       osrs_p[2:0]    | mode[1:0]
+    Status    | bit 7 |bit 6| bit 5| bit 4| bit 3 | bit 2 | bit 1 | bit 0  |
+    __________|     t_sb[2:0]      |       filter[2:0]    |xxxxxxx|spi3w[0]|
+    CTRL_hum  | bit 7 |bit 6| bit 5| bit 4| bit 3 | bit 2 | bit 1 | bit 0  |
+              |xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|   osrs_h[2:0]          |
+    IIR Filter off
+    :return: 0
+    """
+    osrs_h = 0x1
+    osrs_p = 0x1
+    osrs_t = 0x1
+    mode = 0x1
+    filter = 0x0
+    # different modes need sleep to initially set the mode
+    sleep = 0x00
+    t_sb = 0x5
+    spi3w = 0x0
+
+    ctrl_meas = (osrs_t << 5)| (osrs_p << 2) | mode
+    ctrl_hum = osrs_h
+    status = (t_sb << 5) | (filter << 2) | spi3w
+    i2cbus.write_byte_data(i2c_addr, CTRL_MEAS, sleep)
+    i2cbus.write_byte_data(i2c_addr,CTRL_HUM, ctrl_hum)
+    i2cbus.write_byte_data(i2c_addr,CTRL_MEAS, ctrl_meas)
+    i2cbus.write_byte_data(i2c_addr, STATUS, status)
+
 if __name__== '__main__':
     processed = reorder_compensation_params(fetch_compensation_params())
     for i in (1,2):
