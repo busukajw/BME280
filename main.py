@@ -27,7 +27,7 @@ i2c_addr = 0x77
 t_fine = 0.0
 Data = namedtuple('Data', ['temperature', 'humidity','pressure'])
 CompData = namedtuple('CompData',['digt', 'digh', 'digp'])
-
+setup = 0
 def fetch_compensation_params():
     """
     Fetches all the raw calibrated data
@@ -48,7 +48,7 @@ def fetch_compensation_params():
 
 def reorder_compensation_params(raw_comp_params):
     """
-    the compenastion params are stored in reverse order.
+    the compensation params are stored in reverse order across multiple registers.
     Two registers need to be combined to make a single number. To represent
     the Temperature, humidty and pressure.
     do this by shifting 8 bits 8 bits to the left.  Combine the
@@ -125,15 +125,6 @@ def process_raw_sensor_data():
     hum_raw = (raw_data[6] << 8) | raw_data[7]
     return Data(temp_raw, hum_raw, pres_raw)
 
-def read_all():
-    data = process_raw_sensor_data()
-    return Data(
-        read_temperature(data),
-        read_humidity(data),
-        read_pressure(data)
-    )
-def read_temperature(data):
-    comp_temp = compensate_temp()
 def compensate_temp(temp,comp_temp):
     global t_fine
     var1 = (temp /16384) - (comp_temp[0]/1024) * comp_temp[1]
@@ -168,6 +159,25 @@ def compensated_humidity(hum, comp_hum):
         var_h = 0.0
     return var_h
 
+def read_all():
+    data = process_raw_sensor_data()
+    return Data(
+        read_temperature(data),
+        read_humidity(data),
+        read_pressure(data)
+    )
+
+def read_pressure():
+    comp_press = compensated_pressure(CompData['digp'], Data['pressure'])
+    return comp_press
+def read_humidity():
+    comp_hum = compensated_humidity(CompData['digh'], Data['humidity'])
+    return comp_hum
+
+def read_temperature():
+    comp_temp = compensate_temp(CompData['digt'], Data['temperature'])
+    return comp_temp
+
 def weather_setup():
     """
     send the setup for the recommended weather station setting
@@ -201,10 +211,37 @@ def weather_setup():
     i2cbus.write_byte_data(i2c_addr,CTRL_MEAS, ctrl_meas)
     i2cbus.write_byte_data(i2c_addr, STATUS, status)
 
-if __name__== '__main__':
+def comp_data():
+    """
+    sorting out all the compensated data so that it is all ordered and can be used by the actual temp,hum, pressure
+    data
+    :return:
+    """
     processed = reorder_compensation_params(fetch_compensation_params())
     for i in (1,2):
-        if processed['digT'][i] & 0b1000000000000000:
+        if processed['digT'][i] & 0x8: # checking to see if the left most digit is 1 use bit wise &
             processed['digT'][i] = from_twos_complement(processed['digT'][i], bit_length(processed['digT'][i]))
-            print(processed['digT'][i])
+    for i in (1,8):
+        if processed['digP'][i] & 0x8:
+            processed['digP'][i] = from_twos_complement(processed['digP'][i], bit_length(processed['digT'][i]))
+    for i in (0,6):
+            if processed['digH'][i] & 0x8:
+                processed['digH'][i] = from_twos_complement(processed['digH'][i], bit_length(processed['digH'][i]))
+    return processed
 
+def initialiase_bme280():
+    """
+    Read the compensation data.
+    Set the BME280 to the Weather station scenario.
+    :return:
+    """
+    raw_comp_params = fetch_compensation_params()
+    reorder_compensation_params(raw_comp_params)
+    comp_data()
+    weather_setup()
+    return 1
+if __name__== '__main__':
+    if setup == 0:
+        setup = initialiase_bme280()
+    else:
+        read_all()
