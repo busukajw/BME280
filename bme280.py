@@ -31,9 +31,11 @@ class Bme280():
         self.i2cbus = SMBus(1)
         self.compensatedData = self._getCallibrationData()
         self.sensorData = {}
-        print(self.compensatedData)
+        self.getTemperature = 0
+        self.getPressure = 0
+        self.getHumidity = 0
 
-    def fetch_compensation_params(self):
+    def _fetch_compensation_params(self):
         """
         Fetches all the raw calibrated data
         Table 16 P.24 need to read the data from the registers.  can read upto
@@ -51,7 +53,7 @@ class Bme280():
             raw_comp_params.append(self.i2cbus.read_byte_data(self.i2c_addr,i))
         return raw_comp_params
 
-    def reorder_compensation_params(self, raw_comp_params):
+    def _reorder_compensation_params(self, raw_comp_params):
         """
         the compensation params are stored in reverse order across multiple registers.
         Two registers need to be combined to make a single number. To represent
@@ -100,7 +102,7 @@ class Bme280():
     # now that the order of the bits has been made usable.  I need to convert negative 2's complment
     # into negative integers.
 
-    def comp_data(self, processed):
+    def _comp_data(self, processed):
         """
         sorting out all the compensated data so that it is all ordered and can be used by the actual temp,hum, pressure
         data.
@@ -125,23 +127,22 @@ class Bme280():
         attribute
         :return: a dictionary of comparison data
         """
-        comp_data = self.reorder_compensation_params(self.fetch_compensation_params())
-        print(comp_data)
-        return self.comp_data(comp_data)
+        comp_data = self._reorder_compensation_params(self._fetch_compensation_params())
+        return self._comp_data(comp_data)
 
-    def fetch_raw_sensor_data(self):
+    def _fetch_raw_sensor_data(self):
         data = []
         for i in range(0xF7, 0xFC+8):
             data.append(self.i2cbus.read_byte_data(self.i2c_addr,i))
         return data
 
-    def process_raw_sensor_data(self,raw_data):
+    def _process_raw_sensor_data(self,raw_data):
         pres_raw = (raw_data[0] << 12 | (raw_data[1] << 4) | raw_data[2] >> 4)
         temp_raw = (raw_data[3] << 12 | (raw_data[4] << 4) | raw_data[5] >> 4)
         hum_raw = (raw_data[6] << 8) | raw_data[7]
         return {'temperature': temp_raw, 'humidity': hum_raw, 'pressure': pres_raw}
 
-    def compensate_temp(self, temp, comp_temp):
+    def _compensated_temp(self, temp, comp_temp):
         global t_fine
         var1 = (temp /16384.0 - comp_temp[0]/1024.0) * comp_temp[1]
         var2 = (temp /131072.0 - comp_temp[0]/8192.0) * (temp/131072.0 - comp_temp[0]/8192.0) * comp_temp[2]
@@ -149,7 +150,7 @@ class Bme280():
         temperature = t_fine / 5120.0
         return temperature
 
-    def compensated_pressure(self, pres, comp_press):
+    def _compensated_pressure(self, pres, comp_press):
         var1 = (t_fine/2.0) - 64000.0
         var2 = var1 * var1 * (comp_press[5]) / 32768.0
         var2 = var2 + var1 * comp_press[4] * 2.0
@@ -165,7 +166,7 @@ class Bme280():
         p = p + (var1 + var2 + comp_press[6]) / 16.0
         return p / 100
 
-    def compensated_humidity(self, hum, comp_hum):
+    def _compensated_humidity(self, hum, comp_hum):
         var_h = t_fine - 76800.0
         if var_h ==0:
             return 0
@@ -180,22 +181,22 @@ class Bme280():
         return var_h
 
     def read_all(self):
-        data = self.fetch_raw_sensor_data()
-        data = self.process_raw_sensor_data(data)
+        data = self._fetch_raw_sensor_data()
+        data = self._process_raw_sensor_data(data)
         self.sensorData = {'temperature': self.read_temperature(data['temperature']),
                            'humidity': self.read_humidity(data['humidity']),
                            'pressure': self.read_pressure(data['pressure'])
                 }
 
     def read_pressure(self,sensor_data):
-        comp_press = self.compensated_pressure(sensor_data, self.compensatedData['pressure'])
+        comp_press = self._compensated_pressure(sensor_data, self.compensatedData['pressure'])
         return comp_press
     def read_humidity(self,sensor_data):
-        comp_hum = self.compensated_humidity(sensor_data, self.compensatedData['humidity'])
+        comp_hum = self._compensated_humidity(sensor_data, self.compensatedData['humidity'])
         return comp_hum
 
     def read_temperature(self,sensor_data):
-        comp_temp = self.compensate_temp(sensor_data, self.compensatedData['temperature'])
+        comp_temp = self._compensated_temp(sensor_data, self.compensatedData['temperature'])
         return comp_temp
 
     def weather_setup(self):
