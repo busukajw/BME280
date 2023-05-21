@@ -151,22 +151,18 @@ class Bme280():
 
     def compensated_pressure(self, pres, comp_press):
         var1 = (t_fine/2.0) - 64000.0
-        var2 = (((var1 / 4.0) * (var1 / 4.0)) / 2048) * comp_press[5]
-        var2 += ((var1 * comp_press[4]) * 2)
-        var2 = (var2 / 4.0) + (comp_press[3] * 65536.0)
-        var1 = (((comp_press[2] * (((var1 /4.0) * (var1 / 4.0))/ 8192))/ 8) +((comp_press[1] * var1) / 2.0)) / 262144
-        var1 = ((32768 + var1) * comp_press[0]) / 32768
+        var2 = var1 * var1 * (comp_press[5]) / 32768.0
+        var2 = var2 + var1 * comp_press[4] * 2.0
+        var2 = (var2 /4.0) + (comp_press[3] * 65536.0)
+        var1 = (comp_press[2] * var1 * var1 / 524288.0 + comp_press[1] * var1) / 524288.0
+        var1 = (1.0 + var1 / 3276.0) * comp_press[0]
         if var1 == 0.0:
-            return 0
-        p = ((1048576.0 - pres) - (var2 / 4096)) * 3125
-        if pres < 0x80000000:
-            pres = (pres * 2.0) / var1
-        else:
-            pres = (pres / var1) * 2
-
-        var1 = (comp_press[8] * (((pres / 8.0) * (pres  / 8.0)) / 8192.0)) / 4096
-        var2 = ((pres / 4.0) * comp_press[7]) / 8192.0
-        p += ((var1 + var2 + comp_press[6]) / 16.0)
+           return 0 #avoid exception of divide by zero problem
+        p = 1048576.0 - pres
+        p = (p - (var2 / 4096.0)) * 6250.0 / var1
+        var1 = comp_press[8] * p * p / 2147483648.0
+        var2 = p * comp_press[8] / 32768.0
+        p = p + (var1 + var2 + comp_press[6]) / 16.0
         return p / 100
 
     def compensated_humidity(self, hum, comp_hum):
